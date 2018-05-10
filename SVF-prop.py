@@ -10,14 +10,10 @@ from multiprocessing import Pool
 from itertools import combinations
 import xml.etree.ElementTree as ET
 import numpy as np
-from scipy.spatial import kdtree
 from scipy.spatial import Delaunay
 from scipy import spatial
 import scipy as sp
 from scipy import ndimage
-kdtree.node = kdtree.KDTree.node
-kdtree.leafnode = kdtree.KDTree.leafnode
-kdtree.innernode = kdtree.KDTree.innernode
 
 from TGMMlibraries import lineageTree
 
@@ -70,12 +66,6 @@ def build_VF_propagation_backward(LT, t_b=0, t_e=200, neighb_size=20, dist_max=2
             LT.VF.time_nodes[t_b].append(i)
             LT.VF.roots.append(i)
             LT.VF.pos[i]=LT.pos[C]
-
-
-    # Hack to allow pickling of kdtrees for muLTiprocessing
-    kdtree.node = kdtree.KDTree.node
-    kdtree.leafnode = kdtree.KDTree.leafnode
-    kdtree.innernode = kdtree.KDTree.innernode
 
     gg_line = '\r%03d: GG done (%.2f s); '
     prop_line = 'P done (%.2f s); '
