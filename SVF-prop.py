@@ -107,6 +107,7 @@ def build_VF_propagation_backward(LT, t_b=0, t_e=200, neighb_size=20, dist_max=2
                 N_pred = {n: LT.predecessor.get(n, []) for n in N}
                 N_succ = {n: LT.successor.get(n, []) for n in N}
                 for i, n in enumerate(N):
+                    W = 0
                     for n_predii in N_pred[n]:
                         if C_LT_pred.intersection(GG_pred.get(n_predii, set())):
                             W = Ws[0]
