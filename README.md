@@ -1,6 +1,6 @@
 # SVF
 
-This repository contains the Statistical Vector Flow (SVF) framework and the tissue propagation software proposed in our Mouse-Atlas article.
+This repository contains the Statistical Vector Flow (SVF) framework and the tissue propagation software proposed in the article *In toto imaging and reconstruction of post-implantation mouse development at the single-cell level*.
 
 ## Description of the repository
 Folders:
