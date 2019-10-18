@@ -1,0 +1,6 @@
+{
+	"path_to_xml":"../../TGMM/TGMM_Results/GMEMtracking3D_2018_3_6_17_15_5/XML_finalResult_lht/",
+	"path_out": "../../Outputs/Propagation/",
+	"anisotropy": 6.25,
+	"path_bin_TGMM": "../../Outputs/Propagation/TGMM.bin"
+}

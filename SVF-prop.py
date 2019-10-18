@@ -14,8 +14,43 @@ from scipy.spatial import Delaunay
 from scipy import spatial
 import scipy as sp
 from scipy import ndimage
-
 from TGMMlibraries import lineageTree
+if sys.version_info[0]<3:
+    from future.builtins import input
+import json
+
+
+class SVF_parameters(object):
+    """docstring for SVF_parameters"""
+    def check_parameters_consistancy(self):
+        correct = True
+        return correct
+
+    def __str__(self):
+        max_key = max([len(k) for k in self.__dict__.keys() if k!="param_dict"]) + 1
+        max_tot = max([len(str(v)) for k, v in self.__dict__.items()
+                       if k!="param_dict"]) + 2 + max_key
+        output  = 'The registration will run with the following arguments:\n'
+        return output
+
+
+    def __init__(self, file_name):
+        with open(file_name) as f:
+            param_dict = json.load(f)
+            f.close()
+
+        # Default parameters
+
+        self.path_to_xml = '.'
+        self.path_out = '.'
+        self.anisotropy = 1
+        self.start_time = -1
+        self.end_time = -1
+        self.path_bin_TGMM = None
+
+        self.param_dict = param_dict
+        self.__dict__.update(param_dict)
+
 
 def single_cell_propagation(params):
     ''' Computation of the median vector of a cell *C*.
@@ -516,111 +551,199 @@ def GG_from_bin(fname):
     return gg
 
 def read_param_file():
-    ''' Asks for, reads and formats the csv parameter file.
+    ''' Asks for, reads and formats the parameter file
     '''
-    p_param = raw_input('Please enter the path to the parameter file/folder:\n')
-    p_param = p_param.replace('"', '')
-    p_param = p_param.replace("'", '')
-    p_param = p_param.replace(" ", '')
-    if p_param[-4:] == '.csv':
-        f_names = [p_param]
+    if len(sys.argv)<2:
+        p_param = input('\nPlease inform the path to the json config file:\n')
     else:
-        f_names = [os.path.join(p_param, f) for f in os.listdir(p_param) if '.csv' in f and not '~' in f]
+        p_param = sys.argv[1]
+    stable = False
+    while not stable:
+        tmp = p_param.strip('"').strip("'").strip(' ')
+        stable = tmp==p_param
+        p_param = tmp
+    if os.path.isdir(p_param):
+        f_names = [os.path.join(p_param, f) for f in os.listdir(p_param)
+                   if '.json' in f and not '~' in f]
+    else:
+        f_names = [p_param]
+
+    params = []
     for file_name in f_names:
-        f = open(file_name)
-        lines = f.readlines()
-        f.close()
-        param_dict = {}
-        i = 0
-        nb_lines = len(lines)
-        while i < nb_lines:
-            l = lines[i]
-            split_line = l.split(',')
-            param_name = split_line[0]
-            if param_name in []:
-                name = param_name
-                out = []
-                while (name == param_name or param_name == '') and  i < nb_lines:
-                    out += [int(split_line[1])]
-                    i += 1
-                    if i < nb_lines:
-                        l = lines[i]
-                        split_line = l.split(',')
-                        param_name = split_line[0]
-                param_dict[name] = np.array(out)
-            else:
-                param_dict[param_name] = split_line[1].strip()
-                i += 1
-            if param_name == 'anisotropy' or 'time' in param_name:
-                if split_line[1].isdigit():
-                    param_dict[param_name] = int(split_line[1])
-                else:
-                    param_dict[param_name] = float(split_line[1])
-        path_to_xml = param_dict.get('path_to_xml', '.')
-        path_out = param_dict.get('path_out', '.')
-        anisotropy = param_dict.get('anisotropy', 1)
-        start_time = param_dict.get('start_time', -1)
-        end_time = param_dict.get('end_time', -1)
-        p_TGMM = param_dict.get('path_bin_TGMM', None)
-    return (path_to_xml, path_out, anisotropy, start_time, end_time, p_TGMM)
+        print('')
+        print("Extraction of the parameters from file %s"%file_name)
+        p = SVF_parameters(file_name)
+        if not p.check_parameters_consistancy():
+            print("\n%s Failed the consistancy check, it will be skipped")
+        else:
+            params += [p]
+        print('')
+    return params
 
 if __name__ == '__main__':
     global LT
-    path_to_xml, path_out, anisotropy, tb, te, p_TGMM = read_param_file()
-    
-    if not os.path.exists(path_out):
-        os.makedirs(path_out)
-    if not os.path.exists(path_out + 'Amira_SVF/'):
-        os.makedirs(path_out + 'Amira_SVF/')
-    if not os.path.exists(path_out + 'Amira_TGMM/'):
-        os.makedirs(path_out + 'Amira_TGMM/')
+    params = read_param_file()
+    for p in params:
+        if not os.path.exists(p.path_out):
+            os.makedirs(p.path_out)
+        if not os.path.exists(p.path_out + 'Amira_SVF/'):
+            os.makedirs(p.path_out + 'Amira_SVF/')
+        if not os.path.exists(p.path_out + 'Amira_TGMM/'):
+            os.makedirs(p.path_out + 'Amira_TGMM/')
 
-    if p_TGMM is None or not os.path.exists(p_TGMM):
-        files = [f for f in os.listdir(path_to_xml) if '.xml' in f]
-        pos_time = len(os.path.commonprefix(files))
-        times = [int(file.split('.')[0][pos_time:]) for file in files]
-        if tb < 0:
-            tb = min(times) + 10
-        if te < 0:
-            te = max(times) - 10
-        LT_main = lineageTree(file_format = path_to_xml + '/GMEMfinalResult_frame%04d.xml',
-                         tb = tb, te = te, z_mult = anisotropy)
-        LT_main.to_binary(path_out + 'TGMM.bin')
-    else:
-        LT_main = lineageTree(file_format = p_TGMM)
-        tb = LT_main.t_b
-        te = LT_main.t_e
-    LT = LT_main
-
-    if not os.path.exists(path_out + 'GG.bin'):
+        if p.path_bin_TGMM is None or not os.path.exists(p.path_bin_TGMM):
+            files = [f for f in os.listdir(p.path_to_xml) if '.xml' in f]
+            pos_time = len(os.path.commonprefix(files))
+            times = [int(file.split('.')[0][pos_time:]) for file in files]
+            if p.start_time < 0:
+                p.start_time = min(times) + 10
+            if p.end_time < 0:
+                p.end_time = max(times) - 10
+            LT_main = lineageTree(file_format = p.path_to_xml + '/GMEMfinalResult_frame%04d.xml',
+                             tb = p.start_time, te = p.end_time, z_mult = p.anisotropy)
+            LT_main.to_binary(p.path_out + 'TGMM.bin')
+        else:
+            LT_main = lineageTree(file_format = p.path_bin_TGMM)
+            p.start_time = LT_main.t_b
+            p.end_time = LT_main.t_e
         LT = LT_main
-        tic = time()
-        parallel_gabriel_graph_preprocess(LT_main)
-        GG_to_bin(LT_main.Gabriel_graph, path_out + 'GG.bin')
-        print 'Gabriel graph pre-processing:',  time() - tic
-    else:
-        LT_main.Gabriel_graph = GG_from_bin(path_out + 'GG.bin')
 
-    if not os.path.exists(path_out + 'SVF.bin'):
-        tic = time()
-        VF = build_VF_propagation_backward(LT_main, t_b = te, t_e = tb, neighb_size = 10, nb_proc=24)
-        print 'parallel processing:',  time() - tic
+        if not os.path.exists(p.path_out + 'GG.bin'):
+            LT = LT_main
+            tic = time()
+            parallel_gabriel_graph_preprocess(LT_main)
+            GG_to_bin(LT_main.Gabriel_graph, p.path_out + 'GG.bin')
+            print 'Gabriel graph pre-processing:',  time() - tic
+        else:
+            LT_main.Gabriel_graph = GG_from_bin(p.path_out + 'GG.bin')
 
-        mapping_LT_to_VF = parallel_mapping(tb, te)
-        prune_tracks(VF, mapping_LT_to_VF)
+        if not os.path.exists(p.path_out + 'SVF.bin'):
+            tic = time()
+            VF = build_VF_propagation_backward(LT_main, t_b = p.end_time, t_e = p.start_time, neighb_size = 10, nb_proc=24)
+            print 'parallel processing:',  time() - tic
+
+            mapping_LT_to_VF = parallel_mapping(p.start_time, p.end_time)
+            prune_tracks(VF, mapping_LT_to_VF)
+
+            done = set()
+            corresponding_track = {}
+            smoothed_pos = {}
+            num_track = 0
+            for C in VF.nodes:
+                if not C in done:
+                    track = [C]
+                    while track[-1] in VF.successor:
+                        track.append(VF.successor[track[-1]][0])
+                    while track[0] in VF.predecessor:
+                        track.insert(0, VF.predecessor[track[0]][0])
+                    pos_track = np.array([VF.pos[Ci] for Ci in track])
+                    X = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 0], sigma = 5)
+                    Y = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 1], sigma = 5)
+                    Z = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 2], sigma = 5)
+                    track_smoothed = np.zeros_like(pos_track)
+                    track_smoothed[:, 0] = X
+                    track_smoothed[:, 1] = Y
+                    track_smoothed[:, 2] = Z
+                    smoothed_pos.update(zip(track, list(track_smoothed)))
+                    done.update(set(track))
+            
+            to_remove = set()
+            for t, n in VF.to_take_time.iteritems():
+                to_remove.update(set(VF.time_nodes[t]).difference(n))
+
+            VF.nodes = set(VF.nodes)
+            for c in to_remove:
+                if VF.predecessor.get(c, []) != [] and c in VF.successor.get(VF.predecessor.get(c, [-1])[0], []):
+                    VF.successor[VF.predecessor[c][0]].remove(c)
+                for ci in VF.successor.get(c, []):
+                    if c in VF.predecessor.get(ci, []):
+                        VF.predecessor.get(ci, []).remove(c)
+                VF.successor.pop(c, [])
+                VF.successor.pop(c, [])
+                VF.predecessor.pop(c, [])
+                VF.nodes.remove(c)
+
+            VF.pos = smoothed_pos
+
+            VF.to_binary(p.path_out + 'SVF.bin')
+        else:
+            VF = lineageTree(p.path_out + 'SVF.bin')
+
+        write_to_am_2(p.path_out + 'Amira_SVF/seg_t%04d.am', VF, t_b = None, t_e = None,
+                      manual_labels = {}, default_label = 1, length = 7)
+
+        f2 = open(p.path_out + 'Database-SVF.csv', 'w')
+        f2.write('id, mother_id, x, y, z, r, theta, phi, t, label, D-x, D-y, D-z, D-r, D-theta, D-phi\n')
+        f1 = open(p.path_out + 'Database_expanded-SVF.csv', 'w')
+        f1.write('id, mother_id, x, y, z, r, theta, phi, t, label, D-x, D-y, D-z, D-r, D-theta, D-phi,' +
+                 ' x_M, y_M, z_M, r_M, theta_m, phi_m, d_m_x, d_m_y, d_m_z, d_m_r, d_m_theta, d_m_phi,' +
+                 ' d_m_L2, alpha, M_alpha, d_m_alpha, D_alpha\n')
+        path_bary = None
+        tracking_value = {}
+        ass_div = {}
+        for t in range(p.start_time, p.end_time+1):
+            for c in VF.time_nodes[t]:
+                S_p = (-1, -1, -1)
+                alpha = -1
+                S_p = (-1, -1, -1)
+                m_S_p = (-1, -1, -1)
+                m_alpha = -1
+                d_m_alpha = -1
+                d_m_P = (-1, -1, -1)
+                d_m_S_p = (-1, -1, -1)
+                d_m_L2 = -1
+                m_P = (-1, -1, -1)
+                if VF.predecessor.get(c, []) != []:
+                    M_id = VF.predecessor[c][0]
+                else:
+                    M_id = -1
+                P = tuple(VF.pos[c])
+                if path_bary is not None:
+                    S_p = tuple(get_spherical_coordinates(*(barycenters[t] - VF.pos[c]))[:-1])
+                    alpha = get_spherical_coordinates(*(barycenters[t] - VF.pos[c]))[-1]
+                if M_id != -1:
+                    m_P = tuple(VF.pos[M_id])
+                    d_m_P = tuple(np.array(P) - m_P)
+                    d_m_L2 = np.linalg.norm(d_m_P)
+                    if path_bary is not None:
+                        m_S_p = tuple(get_spherical_coordinates(*(barycenters[t-1] - VF.pos[M_id]))[:-1])
+                        m_alpha = get_spherical_coordinates(*(barycenters[t-1] - VF.pos[M_id]))[-1]
+                        d_m_alpha = alpha - m_alpha
+                        d_m_S_p = tuple(np.array(S_p) - m_S_p)
+                L = tracking_value.get(c, -1)
+                D_P = tuple(ass_div.get(c, [-1, -1, -1]))
+                if path_bary is not None:
+                    D_S_p = (-1, -1, -1) if not c in ass_div else tuple(get_spherical_coordinates(*(barycenters[t] - ass_div[c]))[:-1])
+                    D_alpha = -1 if not c in ass_div else get_spherical_coordinates(*(barycenters[t] - ass_div[c]))[-1]
+                else:
+                    D_S_p = (-1, -1, -1)
+                    D_alpha = -1
+                f2.write(('%d, %d, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %d, %d,' + 
+                          '%.5f, %.5f, %.5f, %.5f, %.5f, %.5f\n')%((c, M_id) + P + S_p + (t, L) + D_P + D_S_p))
+                f1.write(('%d, %d, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %d, %d,' + 
+                          '%.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f,'+
+                          '%.5f, %.5f, %.5f,%.5f, %.5f, %.5f, %.5f, %.5f, %.5f,' + 
+                          '%.5f, %.5f, %.5f, %.5f, %.5f\n')%((c, M_id) + P + S_p + (t, L) + D_P + D_S_p + m_P +
+                                                             m_S_p + d_m_P + d_m_S_p + (d_m_L2, alpha, m_alpha, d_m_alpha, D_alpha)))
+        
+        f1.close()
+        f2.close()
 
         done = set()
         corresponding_track = {}
         smoothed_pos = {}
         num_track = 0
-        for C in VF.nodes:
+        all_tracks = []
+        for C in LT.nodes:
             if not C in done:
                 track = [C]
-                while track[-1] in VF.successor:
-                    track.append(VF.successor[track[-1]][0])
-                while track[0] in VF.predecessor:
-                    track.insert(0, VF.predecessor[track[0]][0])
-                pos_track = np.array([VF.pos[Ci] for Ci in track])
+                while track[-1] in LT.successor:
+                    track.append(LT.successor[track[-1]][0])
+                while track[0] in LT.predecessor:
+                    track.insert(0, LT.predecessor[track[0]][0])
+                all_tracks += [track]
+                done.update(set(track))
+                pos_track = np.array([LT.pos[Ci] for Ci in track])
                 X = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 0], sigma = 5)
                 Y = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 1], sigma = 5)
                 Z = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 2], sigma = 5)
@@ -629,115 +752,8 @@ if __name__ == '__main__':
                 track_smoothed[:, 1] = Y
                 track_smoothed[:, 2] = Z
                 smoothed_pos.update(zip(track, list(track_smoothed)))
-                done.update(set(track))
-        
-        to_remove = set()
-        for t, n in VF.to_take_time.iteritems():
-            to_remove.update(set(VF.time_nodes[t]).difference(n))
 
-        VF.nodes = set(VF.nodes)
-        for c in to_remove:
-            if VF.predecessor.get(c, []) != [] and c in VF.successor.get(VF.predecessor.get(c, [-1])[0], []):
-                VF.successor[VF.predecessor[c][0]].remove(c)
-            for ci in VF.successor.get(c, []):
-                if c in VF.predecessor.get(ci, []):
-                    VF.predecessor.get(ci, []).remove(c)
-            VF.successor.pop(c, [])
-            VF.successor.pop(c, [])
-            VF.predecessor.pop(c, [])
-            VF.nodes.remove(c)
-
-        VF.pos = smoothed_pos
-
-        VF.to_binary(path_out + 'SVF.bin')
-    else:
-        VF = lineageTree(path_out + 'SVF.bin')
-
-    write_to_am_2(path_out + 'Amira_SVF/seg_t%04d.am', VF, t_b = None, t_e = None,
-                  manual_labels = {}, default_label = 1, length = 7)
-
-    f2 = open(path_out + 'Database-SVF.csv', 'w')
-    f2.write('id, mother_id, x, y, z, r, theta, phi, t, label, D-x, D-y, D-z, D-r, D-theta, D-phi\n')
-    f1 = open(path_out + 'Database_expanded-SVF.csv', 'w')
-    f1.write('id, mother_id, x, y, z, r, theta, phi, t, label, D-x, D-y, D-z, D-r, D-theta, D-phi,' +
-             ' x_M, y_M, z_M, r_M, theta_m, phi_m, d_m_x, d_m_y, d_m_z, d_m_r, d_m_theta, d_m_phi,' +
-             ' d_m_L2, alpha, M_alpha, d_m_alpha, D_alpha\n')
-    path_bary = None
-    tracking_value = {}
-    ass_div = {}
-    for t in range(tb, te+1):
-        for c in VF.time_nodes[t]:
-            S_p = (-1, -1, -1)
-            alpha = -1
-            S_p = (-1, -1, -1)
-            m_S_p = (-1, -1, -1)
-            m_alpha = -1
-            d_m_alpha = -1
-            d_m_P = (-1, -1, -1)
-            d_m_S_p = (-1, -1, -1)
-            d_m_L2 = -1
-            m_P = (-1, -1, -1)
-            if VF.predecessor.get(c, []) != []:
-                M_id = VF.predecessor[c][0]
-            else:
-                M_id = -1
-            P = tuple(VF.pos[c])
-            if path_bary is not None:
-                S_p = tuple(get_spherical_coordinates(*(barycenters[t] - VF.pos[c]))[:-1])
-                alpha = get_spherical_coordinates(*(barycenters[t] - VF.pos[c]))[-1]
-            if M_id != -1:
-                m_P = tuple(VF.pos[M_id])
-                d_m_P = tuple(np.array(P) - m_P)
-                d_m_L2 = np.linalg.norm(d_m_P)
-                if path_bary is not None:
-                    m_S_p = tuple(get_spherical_coordinates(*(barycenters[t-1] - VF.pos[M_id]))[:-1])
-                    m_alpha = get_spherical_coordinates(*(barycenters[t-1] - VF.pos[M_id]))[-1]
-                    d_m_alpha = alpha - m_alpha
-                    d_m_S_p = tuple(np.array(S_p) - m_S_p)
-            L = tracking_value.get(c, -1)
-            D_P = tuple(ass_div.get(c, [-1, -1, -1]))
-            if path_bary is not None:
-                D_S_p = (-1, -1, -1) if not c in ass_div else tuple(get_spherical_coordinates(*(barycenters[t] - ass_div[c]))[:-1])
-                D_alpha = -1 if not c in ass_div else get_spherical_coordinates(*(barycenters[t] - ass_div[c]))[-1]
-            else:
-                D_S_p = (-1, -1, -1)
-                D_alpha = -1
-            f2.write(('%d, %d, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %d, %d,' + 
-                      '%.5f, %.5f, %.5f, %.5f, %.5f, %.5f\n')%((c, M_id) + P + S_p + (t, L) + D_P + D_S_p))
-            f1.write(('%d, %d, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %d, %d,' + 
-                      '%.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f,'+
-                      '%.5f, %.5f, %.5f,%.5f, %.5f, %.5f, %.5f, %.5f, %.5f,' + 
-                      '%.5f, %.5f, %.5f, %.5f, %.5f\n')%((c, M_id) + P + S_p + (t, L) + D_P + D_S_p + m_P +
-                                                         m_S_p + d_m_P + d_m_S_p + (d_m_L2, alpha, m_alpha, d_m_alpha, D_alpha)))
-    
-    f1.close()
-    f2.close()
-
-    done = set()
-    corresponding_track = {}
-    smoothed_pos = {}
-    num_track = 0
-    all_tracks = []
-    for C in LT.nodes:
-        if not C in done:
-            track = [C]
-            while track[-1] in LT.successor:
-                track.append(LT.successor[track[-1]][0])
-            while track[0] in LT.predecessor:
-                track.insert(0, LT.predecessor[track[0]][0])
-            all_tracks += [track]
-            done.update(set(track))
-            pos_track = np.array([LT.pos[Ci] for Ci in track])
-            X = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 0], sigma = 5)
-            Y = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 1], sigma = 5)
-            Z = sp.ndimage.filters.gaussian_filter1d(pos_track[:, 2], sigma = 5)
-            track_smoothed = np.zeros_like(pos_track)
-            track_smoothed[:, 0] = X
-            track_smoothed[:, 1] = Y
-            track_smoothed[:, 2] = Z
-            smoothed_pos.update(zip(track, list(track_smoothed)))
-
-    write_to_am_2(path_out + 'Amira_TGMM/seg_t%04d.am', LT, t_b = None, t_e = None,
-                  manual_labels = {}, default_label = 1, 
-                  length = 7, new_pos = smoothed_pos)
+        write_to_am_2(p.path_out + 'Amira_TGMM/seg_t%04d.am', LT, t_b = None, t_e = None,
+                      manual_labels = {}, default_label = 1, 
+                      length = 7, new_pos = smoothed_pos)
 

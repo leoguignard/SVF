@@ -10,6 +10,49 @@ from multiprocessing import Pool
 from TGMMlibraries import lineageTree
 from scipy import interpolate
 import sys
+if sys.version_info[0]<3:
+    from future.builtins import input
+import json
+
+
+class tissue_bw_parameters(object):
+    """docstring for tissue_bw_parameters"""
+    def check_parameters_consistancy(self):
+        correct = True
+        return correct
+
+    def __str__(self):
+        max_key = max([len(k) for k in self.__dict__.keys() if k!="param_dict"]) + 1
+        max_tot = max([len(str(v)) for k, v in self.__dict__.items()
+                       if k!="param_dict"]) + 2 + max_key
+        output  = 'The registration will run with the following arguments:\n'
+        return output
+
+
+    def __init__(self, file_name):
+        with open(file_name) as f:
+            param_dict = json.load(f)
+            f.close()
+
+        # Default parameters
+
+        self.path_to_LT = '.'
+        self.path_to_VF = '.'
+        self.path_to_mask = '.'
+        self.time = 0
+        self.path_to_am = '.'
+        self.labels = []
+        self.downsampling = []
+        self.anisotropy = 1.
+        self.path_DB = '.'
+        self.path_div = None
+        self.path_bary = None
+        self.label_names = None
+        self.inverted = True
+
+        self.param_dict = param_dict
+        self.__dict__.update(param_dict)
+
 
 def get_spherical_coordinates(x, y, z):
     ''' Computes spherical coordinates for an x, y, z Cartesian position
@@ -119,75 +162,36 @@ def write_to_am_2(path_format, LT_to_print, t_b = None, t_e = None, length = 5, 
             f.write('%d\n'%(0))
         f.close()
 
+
 def read_param_file():
     ''' Asks for, reads and formats the parameter file
     '''
-    p_param = raw_input('Please enter the path to the parameter file/folder:\n')
-    p_param = p_param.replace('"', '')
-    p_param = p_param.replace("'", '')
-    p_param = p_param.replace(" ", '')
-    if p_param[-4:] == '.csv':
-        f_names = [p_param]
+    if len(sys.argv)<2:
+        p_param = input('\nPlease inform the path to the json config file:\n')
     else:
-        f_names = [os.path.join(p_param, f) for f in os.listdir(p_param) if '.csv' in f and not '~' in f]
-    for file_name in f_names:
-        f = open(file_name)
-        lines = f.readlines()
-        f.close()
-        param_dict = {}
-        i = 0
-        nb_lines = len(lines)
-        while i < nb_lines:
-            l = lines[i]
-            split_line = l.split(',')
-            param_name = split_line[0]
-            if param_name in ['labels', 'downsampling']:
-                name = param_name
-                out = []
-                while (name == param_name or param_name == '') and  i < nb_lines:
-                    if split_line[1].isdigit():
-                        out += [int(split_line[1])]
-                    else:
-                        out += [float(split_line[1])]
-                    i += 1
-                    if i < nb_lines:
-                        l = lines[i]
-                        split_line = l.split(',')
-                        param_name = split_line[0]
-                param_dict[name] = np.array(out)
-            elif param_name in ['label_names']:
-                name = param_name
-                out = []
-                while (name == param_name or param_name == '') and  i < nb_lines:
-                    out += [split_line[1].replace('\n', '').replace('\r', '')]
-                    i += 1
-                    if i < nb_lines:
-                        l = lines[i]
-                        split_line = l.split(',')
-                        param_name = split_line[0]
-                param_dict[name] = np.array(out)
-            else:
-                param_dict[param_name] = split_line[1].strip()
-                i += 1
-            if param_name == 'time':
-                param_dict[param_name] = int(split_line[1])
-        path_LT = param_dict.get('path_to_LT', '.')
-        path_VF = param_dict.get('path_to_VF', '.')
-        path_mask = param_dict.get('path_to_mask', '.')
-        t = param_dict.get('time', 0)
-        path_out_am = param_dict.get('path_to_am', '.')
-        labels = param_dict.get('labels', [])
-        DS = param_dict.get('downsampling', [])
-        ani = np.float(param_dict.get('anisotropy', 1.))
-        path_DB = param_dict.get('path_DB', '.')
-        path_div = param_dict.get('path_div', None)
-        path_bary = param_dict.get('path_bary', None)
-        label_names = param_dict.get('label_names', None)
-        invert = param_dict.get('inverted', '1') != '0'
+        p_param = sys.argv[1]
+    stable = False
+    while not stable:
+        tmp = p_param.strip('"').strip("'").strip(' ')
+        stable = tmp==p_param
+        p_param = tmp
+    if os.path.isdir(p_param):
+        f_names = [os.path.join(p_param, f) for f in os.listdir(p_param)
+                   if '.json' in f and not '~' in f]
+    else:
+        f_names = [p_param]
 
-    return (path_LT, path_VF, path_mask, t, path_out_am,
-            labels, DS, path_DB, path_div, path_bary,
-            label_names, ani, invert)
+    params = []
+    for file_name in f_names:
+        print('')
+        print("Extraction of the parameters from file %s"%file_name)
+        p = tissue_bw_parameters(file_name)
+        if not p.check_parameters_consistancy():
+            print("\n%s Failed the consistancy check, it will be skipped")
+        else:
+            params += [p]
+        print('')
+    return params
 
 def get_division_mapping(path_div, VF):
     ''' Computes the mapping between found divisions and SVF objects
@@ -283,84 +287,82 @@ def get_barycenter(fname, tb, te):
 
 
 if __name__ == '__main__':
-    (path_LT, path_VF, path_mask, t, path_out_am,
-     labels, DS, path_DB, path_div, path_bary,
-     label_names, ani, invert) = read_param_file()
-    if not os.path.exists(path_out_am):
-        os.makedirs(path_out_am)
-    if not os.path.exists('.mask_images/'):
-        os.makedirs('.mask_images/')
-    VF = lineageTree(path_VF)
-    tb = VF.t_b
-    te = VF.t_e
+    for p in params:            
+        if not os.path.exists(p.path_to_am):
+            os.makedirs(p.path_to_am)
+        if not os.path.exists('.mask_images/'):
+            os.makedirs('.mask_images/')
+        VF = lineageTree(p.path_to_VF)
+        tb = VF.t_b
+        te = VF.t_e
 
-    if path_bary is not None:
-        try:
-            barycenters, b_dict = get_barycenter(path_bary, tb, te)
-        except Exception as e:
-            print "Wrong file path to barycenter, please specify the path to the .csv file."
-            print "The process will continue as if no barycenter were provided,"
-            print "disabling the computation of the spherical coordinates"
-            print "error raised: ", e
-            path_bary = None
+        if p.path_bary is not None:
+            try:
+                barycenters, b_dict = get_barycenter(p.path_bary, tb, te)
+            except Exception as e:
+                print "Wrong file path to barycenter, please specify the path to the .csv file."
+                print "The process will continue as if no barycenter were provided,"
+                print "disabling the computation of the spherical coordinates"
+                print "error raised: ", e
+                p.path_bary = None
 
-    im = imread(path_mask)
-    for l in labels:
-        masked_im = im == l
-        tmp = nd.binary_opening(masked_im, iterations = 3)
-        tmp = nd.binary_closing(tmp, iterations = 4)
-        imsave('.mask_images/%03d.tif'%l, SpatialImage(tmp).astype(np.uint8))
+        im = imread(p.path_to_mask)
+        for l in p.labels:
+            masked_im = im == l
+            tmp = nd.binary_opening(masked_im, iterations = 3)
+            tmp = nd.binary_closing(tmp, iterations = 4)
+            imsave('.mask_images/%03d.tif'%l, SpatialImage(tmp).astype(np.uint8))
 
-    mask_dir = '.mask_images/'
-    if label_names is not None:
-        masks = sorted([('.mask_images/%03d.tif'%l, label_names[i]) for i, l in enumerate(labels)], cmp=lambda x1, x2:cmp(x1[1], x2[1]))
-        masks = [m[0] for m in masks]
-    else:
-        masks = ['.mask_images/%03d.tif'%l for l in labels] 
-
-    init_cells = {m: set() for m in range(len(masks))}
-    x_max, y_max, z_max = 0, 0, 0
-
-    for i, path_mask in enumerate(masks):
-        if invert:
-            mask = imread(path_mask).transpose(1, 0, 2)
-            mask = mask[:,::-1,:]
+        mask_dir = '.mask_images/'
+        if p.label_names is not None:
+            masks = sorted([('.mask_images/%03d.tif'%l, p.label_names[i]) for i, l in enumerate(p.labels)], cmp=lambda x1, x2:cmp(x1[1], x2[1]))
+            masks = [m[0] for m in masks]
         else:
-            mask = imread(path_mask)
-        max_vals = np.array(mask.shape) - 1
-        for c in VF.time_nodes[t]:
-            pos_rounded = np.floor(VF.pos[c]/(np.array(DS)*[1.,1.,ani])).astype(np.int)
-            pos_rounded = tuple(np.min([max_vals, pos_rounded], axis = 0))
-            if mask[pos_rounded]:
-                init_cells[i].add(c)
+            masks = ['.mask_images/%03d.tif'%l for l in p.labels] 
 
-    tracking_value = {}
-    for t, cs in init_cells.iteritems():
-        for c in cs:
-            to_treat = [c]
-            tracking_value.setdefault(c, set()).add(t)
-            while to_treat != []:
-                c_tmp = to_treat.pop()
-                next_cells = VF.successor.get(c_tmp, [])
-                to_treat += next_cells
-                for n in next_cells:
-                    tracking_value.setdefault(n, set()).add(t)
-            to_treat = [c]
-            tracking_value.setdefault(c, set()).add(t)
-            while to_treat != []:
-                c_tmp = to_treat.pop()
-                next_cells = VF.predecessor.get(c_tmp, [])
-                to_treat += next_cells
-                for n in next_cells:
-                    tracking_value.setdefault(n, set()).add(t)
+        init_cells = {m: set() for m in range(len(masks))}
+        x_max, y_max, z_max = 0, 0, 0
 
-    tracking_value = {k:np.sum(list(v)) for k, v in tracking_value.iteritems() if len(v) == 1}
+        for i, p.path_to_mask in enumerate(masks):
+            if p.invert:
+                mask = imread(p.path_to_mask).transpose(1, 0, 2)
+                mask = mask[:,::-1,:]
+            else:
+                mask = imread(p.path_to_mask)
+            max_vals = np.array(mask.shape) - 1
+            for c in VF.time_nodes[t]:
+                pos_rounded = np.floor(VF.pos[c]/(np.array(p.downsampling)*[1.,1.,p.anisotropy])).astype(np.int)
+                pos_rounded = tuple(np.min([max_vals, pos_rounded], axis = 0))
+                if mask[pos_rounded]:
+                    init_cells[i].add(c)
 
-    write_to_am_2(path_out_am + '/seg_t%04d.am', VF, t_b= tb, t_e= te,
-                manual_labels = tracking_value, default_label = np.max(tracking_value.values())+1,
-                length = 7)
+        tracking_value = {}
+        for t, cs in init_cells.iteritems():
+            for c in cs:
+                to_treat = [c]
+                tracking_value.setdefault(c, set()).add(t)
+                while to_treat != []:
+                    c_tmp = to_treat.pop()
+                    next_cells = VF.successor.get(c_tmp, [])
+                    to_treat += next_cells
+                    for n in next_cells:
+                        tracking_value.setdefault(n, set()).add(t)
+                to_treat = [c]
+                tracking_value.setdefault(c, set()).add(t)
+                while to_treat != []:
+                    c_tmp = to_treat.pop()
+                    next_cells = VF.predecessor.get(c_tmp, [])
+                    to_treat += next_cells
+                    for n in next_cells:
+                        tracking_value.setdefault(n, set()).add(t)
 
-    for im_p in masks:
-        os.remove(im_p)
+        tracking_value = {k:np.sum(list(v)) for k, v in tracking_value.iteritems() if len(v) == 1}
 
-    write_DB(path_DB, path_div, VF, tracking_value, tb, te)
+        write_to_am_2(p.path_to_am + '/seg_t%04d.am', VF, t_b= tb, t_e= te,
+                    manual_labels = tracking_value, default_label = np.max(tracking_value.values())+1,
+                    length = 7)
+
+        for im_p in masks:
+            os.remove(im_p)
+
+        write_DB(p.path_DB, p.path_div, VF, tracking_value, tb, te)

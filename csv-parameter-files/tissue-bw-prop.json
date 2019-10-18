@@ -1,0 +1,16 @@
+{
+	"path_to_LT": "../../Outputs/Propagation/TGMM.bin",
+	"path_to_VF": "../../Outputs/Propagation/SVF.bin",
+	"path_to_mask": "../../DATA/MouseExample_TP89_Masks_DS.tif",
+	"time": 89,
+	"path_to_am": "../../Outputs/Propagation/amira_with_propagation/",
+	"labels": [250,
+			   150,
+			   50],
+	"downsampling": [4,
+					 4,
+					 1],
+	"inverted": 0,
+	"path_DB": "../../Outputs/Propagation/",
+	"anisotropy": 6.25
+}
