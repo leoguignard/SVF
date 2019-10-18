@@ -285,8 +285,8 @@ def get_barycenter(fname, tb, te):
 
     return barycenters_interp, barycenters
 
-
 if __name__ == '__main__':
+    params = read_param_file()
     for p in params:            
         if not os.path.exists(p.path_to_am):
             os.makedirs(p.path_to_am)

@@ -24,5 +24,5 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 2.7',
     ],
-    install_requires=['scipy', 'numpy']
+    install_requires=['scipy', 'numpy', 'future', 'json']
 )
